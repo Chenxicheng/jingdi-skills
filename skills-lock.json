@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "github-init": {
+      "source": "/Users/jingdi/Documents/jingdi-skills/skills/github-init",
+      "sourceType": "local",
+      "computedHash": "aefc7ab1437d42e554a809617dc027b1856f35f2dd365a451ef285af424b59b3"
+    },
+    "grill-with-docs": {
+      "source": "/Users/jingdi/skill-repo/mattpocock-skills",
+      "sourceType": "local",
+      "computedHash": "e7ef25bbee50cda2eb7b3a8ef541db0a0396dad7d369f7d14fb610671dd1864b"
+    },
+    "grilling": {
+      "source": "/Users/jingdi/skill-repo/mattpocock-skills",
+      "sourceType": "local",
+      "computedHash": "bf1e75d96966edd298902d63348c828921b8b095d7306d0cdd56b4a591a7a82b"
+    },
+    "writing-great-skills": {
+      "source": "/Users/jingdi/skill-repo/mattpocock-skills",
+      "sourceType": "local",
+      "computedHash": "dd555ce552f82784c3d2b8d13a8e26a6677a07ddc00032e142dec33bfd5438c6"
+    }
+  }
+}
