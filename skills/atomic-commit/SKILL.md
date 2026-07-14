@@ -1,70 +1,58 @@
 ---
 name: atomic-commit
 description: >-
-  创建 atomic commit。Use when the user asks to create git commits from current
-  changes or specified files, or to split work into one or more atomic commits;
-  also use for 提交 or 帮我提交.
+  创建原子化 Git 提交并把 Git 作业委派给 committer subagent。用于 Git
+  仓库上下文中用户明确要求立即提交当前工作或指定范围、把混合变更拆分并创建
+  多个 commit、仅说“提交”，或项目规范要求委派已批准的提交操作。不要用于
+  amend、初始化仓库、initial commit、push、分析拆分方案、只整理 staging，或
+  其他不创建 commit 的 Git 作业。
 ---
 
-# Atomic Commit
+# 原子化提交
 
-## 概览
+创建一个或多个原子化提交。每个 commit 只表达一个单一、可审查的目的；完成
+该目的所需的实现、测试、文档、配置、迁移和生成产物合并为同一个 commit。
 
-创建一个或多个 atomic commits，并把所有提交相关工作交给 committer subagent。master agent 只负责触发、收集最低输入、读取 `agents/committer.md`、委托、校验 JSON、转述结果。
+## 主控职责
 
-## Master Agent 职责
+只做协调入口。
 
-只作为入口协调者行动。
+1. 解析 `project_path`；缺失时才询问用户。
+2. 解析当前 skill 目录的绝对路径为 `skill_path`；无法解析时停止。
+3. 保留用户原始请求为 `intent`。
+4. 用户明确指定文件或目录范围时，作为可选 `commit_files` 传入；否则省略该
+   字段，让 committer 根据 `intent` 识别候选组。
+5. 创建 committer subagent，并要求它在任何 Git 命令前读取
+   `<skill_path>/agents/committer.md`。
+6. 按 `agents/committer.md` 的完整字段契约校验严格 JSON，再向用户转述结果。
 
-要做：
+不要运行 Git 命令、检查 status 或 diff、选择文件、拆分候选组、编写
+commit message、执行 commit、amend 或 push。没有 subagent/worker 能力时，
+停止并说明本 skill 需要委派执行 Git 作业。
 
-- 接收或询问 `project_path`。
-- 解析当前 skill 目录的真实绝对路径，作为 `skill_path` 传给 committer；无法解析时停止，不 spawn committer。
-- 保留用户原始提交意图，作为 `intent` 传给 committer。
-- 如果用户明确给了文件列表，把它作为可选 `commit_files` 传给 committer。
-- 读取 `agents/committer.md`，并把 `skill_path`、`project_path`、可选 `commit_files`、`intent` 委托给 committer subagent。
-- 要求 committer 按 `agents/committer.md` 中的协议只返回严格 JSON。
-- 收到 JSON 后解析并校验字段和类型；非 JSON、缺字段、字段类型错误、未替换占位符或自然语言前后缀都按失败处理。
-
-不要做：
-
-- 运行任何 bash git 命令，包括 `git status`、`git diff`、`git add`、`git commit`、`git restore`、`git reset`、`git push` 或 `git config`。
-- 检查 git 状态、推断相关文件、判断原子性、拆分 commit group、生成 commit message 或执行 commit。
-- 要求 subagent 提交 "everything"；没有文件列表时，传入用户原始意图，让 committer 自行识别相关 atomic commit 候选。
-- 在提交后 push。
-
-如果缺少 `project_path`，向用户询问。`commit_files` 可以缺省；缺省时由 committer 从 git 状态和用户意图中识别候选。
-
-如果当前环境没有可用的 subagent/worker 能力，停止并向用户说明无法在“不由 master agent 执行 git 操作”的约束下完成提交；不要由 master agent 接管 git 命令。
-
-## 委托 Prompt
-
-读取 `agents/committer.md` 后，使用以下 prompt 形状委托：
+## Subagent 提示词
 
 ```text
-Use the committer instructions at:
+先读取并遵循以下 committer 指令：
 <skill_path>/agents/committer.md
 
-Create one or more atomic commits and return strict JSON only.
+创建一个或多个原子化提交，并且只返回严格 JSON。
 
-Inputs:
-- skill_path: <absolute path to this skill folder>
-- project_path: <absolute project path>
-- commit_files: <optional explicit list of files>
-- intent: <user's original commit request>
+输入：
+- skill_path: <当前 skill 目录的绝对路径>
+- project_path: <项目绝对路径>
+- commit_files: <可选的明确文件或目录范围；缺失时省略>
+- intent: <用户原始提交请求>
 
-Constraints:
-- The master agent will not run git commands.
-- You are responsible for related-file detection, atomicity decisions, git inspection, staging, committing one or more atomic commits, and result packaging.
-- Return only valid JSON matching the contract defined in committer.md. Do not return Markdown or explanatory text.
+约束：
+- master agent 不运行 Git 命令。
+- 你负责 Git 检查、相关文件识别、原子化分组、staging、提交、校验和结果封装。
+- 只返回符合 committer.md 的有效 JSON。不要返回 Markdown 或说明文字。
 ```
 
-## Reference files
+## 资源
 
-`agents/` 目录包含 specialized subagent 指令。只在需要 spawn 对应 subagent 时读取：
-
-- `agents/committer.md`：识别相关变更、拆分一个或多个 atomic commits、检查 git 状态、保护 staged work、生成 commit message、执行 commit，并按固定 JSON 协议返回结果。
-
-`references/` 目录包含 committer 按需读取的详细规则：
-
-- `references/message-rules.md`：只有当 diff 或 `intent` 暗示 breaking change、issue reference、body/footer 时读取。
+- `agents/committer.md`：必读的 subagent 操作指引，覆盖低 token Git 检查、
+  原子化候选组识别、index 保护、commit 创建和 JSON 结果封装。
+- `references/message-rules.md`：只有候选组需要 breaking change、issue
+  footer、body 或其他高级 commit message 细节时读取。

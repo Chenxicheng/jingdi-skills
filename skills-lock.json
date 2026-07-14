@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "atomic-commit": {
+      "source": "/Users/jingdi/skill-repo/jingdi-skills",
+      "sourceType": "local",
+      "computedHash": "cd730eac2c196712ada709d37d424b7d0bba1e688f9e7c6f7536f73f8a199fcf"
+    },
     "github-init": {
       "source": "/Users/jingdi/Documents/jingdi-skills/skills/github-init",
       "sourceType": "local",
@@ -15,6 +20,12 @@
       "source": "/Users/jingdi/skill-repo/mattpocock-skills",
       "sourceType": "local",
       "computedHash": "bf1e75d96966edd298902d63348c828921b8b095d7306d0cdd56b4a591a7a82b"
+    },
+    "skill-creator": {
+      "source": "anthropics/skills",
+      "sourceType": "github",
+      "skillPath": "skills/skill-creator/SKILL.md",
+      "computedHash": "5ea13a6d9f0d4bb694405d79acd00cadec0d21bb138c4dd10fcf3c500cb835c2"
     },
     "writing-great-skills": {
       "source": "/Users/jingdi/skill-repo/mattpocock-skills",
