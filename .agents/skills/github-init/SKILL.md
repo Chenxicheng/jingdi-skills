@@ -6,6 +6,7 @@ description: >-
   to GitHub, GitHub init, or asks to turn a local project into a GitHub remote
   repository. The master agent gathers the required repository choices and
   delegates all git and gh command execution to the github-initializer agent.
+disable-model-invocation: true
 ---
 
 # GitHub Init
