@@ -72,5 +72,7 @@ created and verified commit.
 - Require non-empty strings and repo-relative `files`; allow an empty
   `ignoredFiles` or failure `error.files` array.
 - Require at least one commit on success. A no-change result is a failure.
+- Require `commits[].files`, `ignoredFiles`, and `error.files` to be duplicate-free
+  and mutually exclusive wherever those fields are present.
 - Preserve the Subagent's `error.message` and `nextStep`; do not reinterpret
   repository facts.

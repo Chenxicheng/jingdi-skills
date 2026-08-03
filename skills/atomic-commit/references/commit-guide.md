@@ -75,6 +75,9 @@ creating any commit.
    `commit_files`. Include every clear group only when the intent is broad, such
    as "commit" or "commit current work". Classify every changed path as a
    candidate-group member, an unrelated ignored file, or a blocking error file.
+   Record this immutable initial-inventory classification by exact path. Keep
+   candidate paths separate from unrelated paths regardless of whether they are
+   tracked or untracked.
 
 5. Read numstat only when filenames and intent do not provide enough information
    to form groups, or when performing the mandatory size and binary precheck:
@@ -264,12 +267,28 @@ and state the smallest safe next step.
 Follow the delegation prompt's Result Contract exactly; it is the sole source of
 truth for JSON keys and shapes.
 
-- Put each changed path in exactly one of `data.commits[*].files`,
-  `data.ignoredFiles`, or `error.files`.
-- Return ignored unrelated paths even on success.
+- Derive `data.ignoredFiles` only from paths classified as unrelated in the
+  initial inventory. Never derive it from tracked/untracked status labels or a
+  post-commit status read.
+- Let `committedPaths` be the union of every verified
+  `data.commits[*].files`. Before returning JSON, calculate
+  `data.ignoredFiles = initialUnrelatedPaths - committedPaths - error.files`.
+  This explicitly prevents a successfully committed untracked candidate from
+  remaining in `data.ignoredFiles`.
+- Require `committedPaths`, `data.ignoredFiles`, and `error.files` to be pairwise
+  disjoint. Require their union to cover every path from the initial changed-path
+  inventory plus any unexpected path discovered by a commit self-check. A path
+  must appear exactly once across these three sets.
+- Return ignored unrelated paths even on success, after applying the exclusions
+  above.
 - After repository resolution, include the resolved repository name, branch,
   completed commits, and ignored files in every failure result.
 - Before repository resolution, use the contract's null data form.
 - On partial success, put every verified completed commit in `data.commits` and
   put the failed or unverified paths in `error.files`.
+- Run the disjointness and coverage self-check immediately before serializing
+  the result. If only the result classification is inconsistent, correct the JSON
+  from the recorded initial classification map, verified commit records, and
+  self-check records. Do not run Git again. Never repair the result by adding a
+  committed path to `data.ignoredFiles`.
 - Return no Markdown, commentary, or text outside the JSON value.
