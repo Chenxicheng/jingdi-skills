@@ -1,58 +1,76 @@
 ---
 name: atomic-commit
 description: >-
-  创建原子化 Git 提交并把 Git 作业委派给 committer subagent。用于 Git
-  仓库上下文中用户明确要求立即提交当前工作或指定范围、把混合变更拆分并创建
-  多个 commit、仅说“提交”，或项目规范要求委派已批准的提交操作。不要用于
-  amend、初始化仓库、initial commit、push、分析拆分方案、只整理 staging，或
-  其他不创建 commit 的 Git 作业。
+  Create atomic Git commits by delegating repository inspection and mutation to
+  a Codex subagent. Use when the user asks to commit current or scoped changes,
+  split mixed work into commits, or follow an approved atomic-commit workflow.
+  Do not use for amend, initial commit, push, staging-only work, or planning
+  commits without creating them.
 ---
 
-# 原子化提交
+# Atomic Commit
 
-创建一个或多个原子化提交。每个 commit 只表达一个单一、可审查的目的；完成
-该目的所需的实现、测试、文档、配置、迁移和生成产物合并为同一个 commit。
+Coordinate one bounded Commit Batch. The Committer Subagent exclusively runs
+Git and verifies its own commits; the Coordinator validates only its JSON.
 
-## 主控职责
+## Coordinator workflow
 
-只做协调入口。
+1. Resolve `project_path` from the user request or current workspace metadata.
+   Ask only when neither identifies one absolute path.
+2. Resolve this Skill directory as `skill_path` without opening
+   `references/commit-guide.md`.
+3. Preserve the user's complete request as `intent`. When the user explicitly
+   names files or directories, pass them as the maximum `commit_files` scope;
+   otherwise omit `commit_files`.
+4. Create one fresh Codex subagent without conversation history. Send only the
+   delegation envelope below, then wait for it to finish. Do not pin a model.
+5. Validate the returned JSON against the Result Contract. If it is malformed,
+   ask the same subagent once to correct only the JSON response without rerunning
+   Git. Report a blocked result if the correction still fails.
+6. Report the validated result to the user.
 
-1. 解析 `project_path`；缺失时才询问用户。
-2. 解析当前 skill 目录的绝对路径为 `skill_path`；无法解析时停止。
-3. 保留用户原始请求为 `intent`。
-4. 用户明确指定文件或目录范围时，作为可选 `commit_files` 传入；否则省略该
-   字段，让 committer 根据 `intent` 识别候选组。
-5. 创建 committer subagent，并要求它在任何 Git 命令前读取
-   `<skill_path>/agents/committer.md`。
-6. 按 `agents/committer.md` 的完整字段契约校验严格 JSON，再向用户转述结果。
+The Coordinator does not read the Commit Guide, run Git, inspect repository
+state, choose candidate files, write messages, or perform a fallback commit. If
+Codex subagents are unavailable, stop and explain that delegation is required.
 
-不要运行 Git 命令、检查 status 或 diff、选择文件、拆分候选组、编写
-commit message、执行 commit、amend 或 push。没有 subagent/worker 能力时，
-停止并说明本 skill 需要委派执行 Git 作业。
-
-## Subagent 提示词
+## Delegation envelope
 
 ```text
-先读取并遵循以下 committer 指令：
-<skill_path>/agents/committer.md
+Act as the sole Committer Subagent for this request.
 
-创建一个或多个原子化提交，并且只返回严格 JSON。
+Before running any Git command, read and follow:
+<skill_path>/references/commit-guide.md
 
-输入：
-- skill_path: <当前 skill 目录的绝对路径>
-- project_path: <项目绝对路径>
-- commit_files: <可选的明确文件或目录范围；缺失时省略>
-- intent: <用户原始提交请求>
+Inputs:
+- project_path: <absolute project path>
+- intent: <verbatim user request>
+- commit_files: <optional explicit maximum scope; omit when absent>
 
-约束：
-- master agent 不运行 Git 命令。
-- 你负责 Git 检查、相关文件识别、原子化分组、staging、提交、校验和结果封装。
-- 只返回符合 committer.md 的有效 JSON。不要返回 Markdown 或说明文字。
+Own all repository inspection, candidate grouping, commit creation, and
+post-commit verification. Return exactly one JSON object with no Markdown or
+surrounding text.
+
+Result Contract
+
+Success:
+{"ok":true,"data":{"commits":[{"commitId":"<id>","commitMessage":"<message>","files":["<repo-relative path>"]}],"ignoredFiles":["<repo-relative path>"]}}
+
+Failure after resolving the repository:
+{"ok":false,"data":{"repoName":"<name>","branch":"<branch>","commits":[],"ignoredFiles":[]},"error":{"message":"<reason>","files":["<repo-relative path>"],"nextStep":"<smallest required action>"}}
+
+Failure before resolving the repository:
+{"ok":false,"data":null,"error":{"message":"<reason>","files":[],"nextStep":"<smallest required action>"}}
+
+For partial success, populate the failure result's data.commits with every
+created and verified commit.
 ```
 
-## 资源
+## Result validation
 
-- `agents/committer.md`：必读的 subagent 操作指引，覆盖低 token Git 检查、
-  原子化候选组识别、index 保护、commit 创建和 JSON 结果封装。
-- `references/message-rules.md`：只有候选组需要 breaking change、issue
-  footer、body 或其他高级 commit message 细节时读取。
+- Accept only the three Result Contract shapes with no additional top-level
+  fields.
+- Require non-empty strings and repo-relative `files`; allow an empty
+  `ignoredFiles` or failure `error.files` array.
+- Require at least one commit on success. A no-change result is a failure.
+- Preserve the Subagent's `error.message` and `nextStep`; do not reinterpret
+  repository facts.

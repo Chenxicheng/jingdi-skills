@@ -1,0 +1,4 @@
+interface:
+  display_name: "Atomic Commit"
+  short_description: "Delegate isolated atomic Git commits"
+  default_prompt: "Use $atomic-commit to create scoped atomic commits for the current work."

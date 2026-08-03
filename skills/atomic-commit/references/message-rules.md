@@ -1,29 +1,31 @@
-# 高级提交信息规则
+# Advanced Commit Message Rules
 
-只在 diff 或 `intent` 暗示破坏性变更、issue 引用、正文或 footer 时读取本文件。
-普通单行 Conventional Commit 不需要读取。
+Read this file only when `intent` or the candidate diff requires a body, issue
+footer, or breaking-change notation. Keep ordinary Conventional Commits to one
+line.
 
-## 破坏性变更
+## Breaking Changes
 
-如果候选 diff 或 `intent` 明确表示破坏性变更：
+When the change is explicitly breaking:
 
-- subject 使用 `type!:` 或 `type(scope)!:`。
-- footer 必须包含 `BREAKING CHANGE: <description>`。
-- `<description>` 使用英文说明用户可见影响或迁移要求。
+- Add `!` as `type!:` or `type(scope)!:`.
+- Add `BREAKING CHANGE: <description>` as a footer.
+- Describe the user-visible impact or migration requirement in English.
 
-如果只能判断“可能破坏兼容”，但影响说明不清楚，返回失败 JSON，请用户补充影响说明。不要发明破坏性影响。
+Block when compatibility may break but the impact is unclear. Request the
+missing impact through the Result Contract; do not invent it.
 
-## Issue Footer
+## Issue References
 
-只使用用户 `intent` 或候选 diff 中可见的 issue 引用：
+Use only issue references present in `intent` or the candidate diff:
 
-- 修复并关闭 issue：`Closes #123`
-- 相关但不关闭 issue：`Refs #456`
+- Use `Closes #123` when the commit fixes and closes the issue.
+- Use `Refs #456` when the commit relates to the issue without closing it.
 
-不要猜 issue，不要从无关文本生成 issue footer。
+Never infer an issue number from unrelated text.
 
-## 正文与 Footer
+## Body and Footers
 
-body 使用英文，只说明用户影响、风险、迁移要求或变更原因。普通单行 commit 不添加 body。
-
-footer 使用英文，只用于破坏性变更或 issue 引用。没有明确来源时，不添加 footer。
+Write the body in English only when it adds user impact, risk, migration steps,
+or necessary rationale. Use footers only for breaking changes or explicit issue
+references. Omit both when no such information exists.
