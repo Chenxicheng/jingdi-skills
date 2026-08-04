@@ -1,7 +1,6 @@
 # Subagent 执行指南
 
-作为本次请求唯一的 Subagent，独占全部 Git 操作。从委派输入接收 `project_path`、`intent`、
-可选 `commit_files` 和 Result Contract。
+输入：`project_path`、`intent`、可选 `commit_files` 和 Result Contract。
 
 ## 边界
 
@@ -54,9 +53,9 @@ GIT_LITERAL_PATHSPECS=1 git diff --check HEAD -- "${candidate_files[@]}"
 ```
 
 `type` 取 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、
-`revert`。仅当 `intent` 明确给出 Issue reference/关闭语义、变更属于 breaking change，或 message 需要
-补充用户影响、风险、迁移步骤或必要理由时，读取 [`message-rules.md`](./message-rules.md)。Issue 不得
-从 branch 或 diff 推断。
+`revert`。Issue footer 仅来自 `intent` 中明确的 Issue。`intent` 包含此类 Issue、变更明确或可能破坏
+兼容性，或 message 需要补充用户影响、风险、迁移步骤或必要理由时，读取
+[`message-rules.md`](./message-rules.md)。
 
 **完成条件：** 每个分组都有一条符合其目的与按需 message 规则的独立 message。
 
@@ -94,7 +93,7 @@ commit。任一检查失败时保留已创建 commit，在 `error.message` 中�
 在 `nextStep` 中给出最小处理动作，并将未验证路径写入 `error.files`。
 
 严格按委派输入的 Result Contract 返回 JSON。`ignoredFiles` 仅来自初始清点的无关路径；部分成功时返回
-全部已验证 commit 和未提交的错误路径。JSON 之外不返回其他文本。
+全部已验证 commit 和未验证的错误路径。JSON 之外不返回其他文本。
 
 **完成条件：** 返回值符合 Result Contract，且每个初始变更路径只出现在 committed、ignored 或 error
 其中一类。

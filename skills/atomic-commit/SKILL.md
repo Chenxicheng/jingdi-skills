@@ -1,8 +1,8 @@
 ---
 name: atomic-commit
 description: >-
-  提交已有 Git 仓库的当前或指定范围变更：创建新的本地原子化 commit，或将可按完整文件分组的
-  混合变更拆分为多个 commit。不用于 amend、initial commit、push 或仅 staging。
+  在已有 HEAD 的 Git 仓库中，为当前或指定范围创建本地原子化 commit，或将可按完整文件分组的
+  混合变更拆分为多个 commit。
 ---
 
 # 原子化提交
@@ -11,8 +11,8 @@ description: >-
 
 1. 从用户请求或 workspace metadata 解析绝对路径 `project_path`；两者均无法确定时才询问。
    解析当前 Skill 目录为 `skill_path`，不读取 Commit Guide。
-2. 将完整提交请求作为 `intent`，包含请求上下文中明确的 Issue reference 与关闭语义；
-   不从 branch 或 diff 推断 Issue。用户明确指定路径时，将其作为最大范围 `commit_files`。
+2. 将完整提交请求作为 `intent`，包含请求上下文中明确的 Issue reference 与关闭语义。
+   用户明确指定路径时，将其作为最大范围 `commit_files`。
 3. 创建不继承对话历史的新 Subagent，不指定 model。仅发送委派输入并等待。
 4. 按 Result Contract 校验 JSON。不合格时，只允许同一 Subagent 在不运行 Git 的前提下修正一次；
    仍不合格则报告阻塞，否则转述结果。
@@ -31,7 +31,7 @@ Subagent 独占仓库检查、分组、commit message、Git 写入与校验。Co
 输入：
 - project_path: <项目绝对路径>
 - intent: <用户完整请求>
-- commit_files: <可选的最大允许范围；缺失时省略>
+- commit_files: ["<repo-relative literal path>"]（可选最大范围；缺失时省略）
 
 独立完成仓库检查、分组、commit 创建和提交后校验。只返回一个 JSON 对象，不添加 Markdown 或前后文本。
 

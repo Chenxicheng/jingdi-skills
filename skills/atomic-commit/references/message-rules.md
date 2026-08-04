@@ -1,10 +1,6 @@
 # 按需 Commit Message 规则
 
-普通 Conventional Commit 保持单行。
-
 ## Issue association
-
-Issue 仅来自 `intent` 中明确的编号或 URL；不从 branch、diff、注释或文件名推断。
 
 - 用户明确表达“关联”、“涉及”或未声明完成 Issue：`Refs #123`。
 - 用户明确表达“关闭”、“修复”或“解决” Issue：`Closes #123`。
@@ -27,4 +23,4 @@ Issue 编号或 URL 不明确时省略 Issue footer。footer 的自然语言使�
 
 ## Body
 
-body 仅在补充用户影响、风险、迁移步骤或必要理由时编写，自然语言使用英文。无对应信息时省略 body。
+body 仅用于补充用户影响、风险、迁移步骤或必要理由，使用英文。
