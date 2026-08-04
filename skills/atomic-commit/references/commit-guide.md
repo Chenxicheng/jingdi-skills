@@ -1,294 +1,100 @@
-# Committer Execution Guide
+# Subagent 执行指南
 
-Act as the only Committer Subagent for the request. Own every Git command,
-commit, and post-commit check. Do not ask the Coordinator to inspect or repair
-Git state. The Coordinator performs no Git operation after delegation.
+作为本次请求唯一的 Subagent，独占全部 Git 操作。从委派输入接收 `project_path`、`intent`、
+可选 `commit_files` 和 Result Contract。
 
-Accept `skill_path`, `project_path`, the original `intent`, optional
-`commit_files`, and the Result Contract in the delegation prompt. Return only
-JSON that exactly follows that contract.
+## 边界
 
-## Boundaries
+- 每个 commit 只表达一个可审查目的，并包含该目的需要的实现、测试、文档、配置、迁移与生成产物。
+- `commit_files` 是最大允许范围；完整 commit 需要范围外路径时阻断。
+- 需要 hunk 级拆分、单文件混合多个目的、依赖或顺序不明时阻断，不运行交互式 Git 命令。
+- 敏感文件、密钥、token、密码、私钥、`.env` 或机器本地配置始终阻断。
+- 二进制或生成产物仅在用户明确纳入，或与同组 source/producer 的关系清晰时提交。
+- 不 push、amend、rollback、绕过 Hook、修改 Git 配置或丢弃 worktree 变更。
+- 默认只做提交级验证；test、lint 或 build 仅在 `intent` 明确要求时运行。
 
-- Create one reviewable commit per purpose. Include every implementation, test,
-  document, configuration, migration, and generated artifact required for that
-  purpose.
-- Treat `commit_files` as the maximum allowed scope, not as permission to omit a
-  dependency. Block when a complete commit requires a path outside that scope.
-- Block hunk-level splitting, mixed purposes in one file, missing dependencies,
-  ambiguous ordering, secrets, credentials, private keys, tokens, `.env` files,
-  and machine-local configuration.
-- Block any binary, generated, or unusually large file whose safety and atomic
-  role cannot be verified. Never sample content to bypass a safety or atomicity
-  check.
-- Do not push, amend, roll back commits, bypass hooks, change Git configuration,
-  discard worktree changes, or run interactive Git commands.
-- Do not run tests, lint, or builds by default. Run only the exact validation
-  explicitly required by `intent`. Allow normal Git hooks to run.
+## 1. 解析并清点
 
-## Phase 1: Preflight Every Group
-
-Complete this phase for all candidate groups before changing the index or
-creating any commit.
-
-1. Resolve the repository from `project_path`:
-
-   ```bash
-   git rev-parse --show-toplevel
-   git rev-parse --verify HEAD
-   git branch --show-current
-   git rev-parse --short HEAD
-   ```
-
-   Block an unborn `HEAD`. Derive `repoName` from the top-level directory name.
-   Report a detached branch as `HEAD-detached:<short-hash>`.
-
-2. Read repository status exactly once:
-
-   ```bash
-   git status --porcelain=v1 -z --untracked-files=all --no-renames
-   ```
-
-   Parse the NUL-delimited output as path arguments. Never split paths on spaces
-   or newlines. Treat renames as delete/add. Resolve `commit_files` against
-   repository-relative path components and reject paths outside the repository.
-
-3. Block an unmerged index or an in-progress Git operation before grouping.
-   Return only compact counts and operation names from these checks:
-
-   ```bash
-   set -o pipefail
-   git ls-files -u -z | tr -cd '\0' | wc -c
-   for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_START \
-     BISECT_LOG rebase-merge rebase-apply sequencer; do
-     marker_path=$(git rev-parse --git-path "$marker")
-     test ! -e "$marker_path" || printf '%s\0' "$marker"
-   done
-   ```
-
-   Treat any nonzero unmerged-entry count or emitted marker as blocking. Do not
-   finish, abort, or otherwise modify that state. Put all unresolved or
-   unclassified changed paths in `error.files` and direct the user to finish or
-   abort the named operation before retrying.
-
-4. Form candidate groups from the status, `intent`, and optional
-   `commit_files`. Include every clear group only when the intent is broad, such
-   as "commit" or "commit current work". Classify every changed path as a
-   candidate-group member, an unrelated ignored file, or a blocking error file.
-   Record this immutable initial-inventory classification by exact path. Keep
-   candidate paths separate from unrelated paths regardless of whether they are
-   tracked or untracked.
-
-5. Read numstat only when filenames and intent do not provide enough information
-   to form groups, or when performing the mandatory size and binary precheck:
-
-   ```bash
-   GIT_LITERAL_PATHSPECS=1 git diff HEAD --numstat -z --no-renames -- \
-     "${tracked_files[@]}"
-   ```
-
-6. Before any complete tracked diff or untracked content enters model context,
-   run a metadata-only size, type, and generation precheck. Use Git and standard
-   shell tools so the model receives only byte counts, line counts, binary flags,
-   file types, attributes, and producer/source relationships:
-
-   ```bash
-   set -o pipefail
-   GIT_LITERAL_PATHSPECS=1 git diff HEAD --binary --full-index \
-     --no-ext-diff --no-textconv -- "${tracked_files[@]}" | wc -c
-   git check-attr -z diff generated linguist-generated -- "${candidate_files[@]}"
-   ```
-
-   Gate every untracked path with an `lstat`-based type check before opening it.
-   Use runtime standard-library calls equivalent to `lstat` and `readlink`; do
-   not use `stat`, `realpath`, or another operation that follows the path.
-
-   - For a symbolic link, inspect and count only the link target returned by
-     `readlink`. Never open, resolve, or inspect the target. Commit the link
-     target itself; its patch fingerprint must include mode `120000`.
-   - For a regular file, record its `lstat` byte size, then run `wc -c` and the
-     `--no-index --numstat` binary check below. Recheck that it is still a regular
-     file before reading its content.
-   - Reject directories, FIFOs, sockets, block devices, character devices, and
-     every other file type. Do not open them or attempt to commit them.
-
-   ```bash
-   wc -c < "$untracked_regular_file"
-   git diff --no-index --numstat -- /dev/null "$untracked_regular_file"
-   ```
-
-   Treat exit status `1` from the untracked `--no-index` comparison as the
-   expected "different" result, but reject other command failures. Inspect file
-   types without dereferencing links. Block if the type changes during the gate.
-   Use repository rules, attributes, path conventions, and visible
-   producer/source relationships to identify generated artifacts.
-
-   Admit at most 64 KiB of complete text diff or content per candidate group and
-   128 KiB across the entire request. Count tracked patch bytes and untracked
-   regular-file bytes or symbolic-link target bytes toward these limits. Do not
-   put binary or generated content in model context. Continue with an over-limit,
-   binary, or generated artifact only when its source is in the same group and a
-   deterministic generator, checksum, object ID, or equivalent metadata proves
-   its exact role and contents. Record that proof for post-commit verification.
-   Otherwise block the whole request. Never sample, truncate, or partially decode
-   a file to pass this gate.
-
-7. Inspect each admitted candidate group with the smallest complete diff:
-
-   ```bash
-   GIT_LITERAL_PATHSPECS=1 git diff HEAD --unified=0 --no-renames -- "${tracked_files[@]}"
-   ```
-
-   Run this only when the group has tracked files. Inspect each admitted
-   untracked text file in full. Expand context only around a specific ambiguous
-   hunk when the zero-context diff cannot establish purpose, dependency, safety,
-   or commit-message meaning. Do not reread the whole diff merely for more
-   context.
-
-8. Verify atomicity, completeness, sensitive-data safety, and dependency order
-   for every group. Order dependent groups topologically; otherwise use stable
-   path order. If any group fails, create no commits.
-
-9. Run any validation explicitly required by `intent`. Finish every requested
-   validation before creating a commit. If validation fails, create no commits.
-
-## Phase 2: Commit Groups Sequentially
-
-For each approved group, preserve its repository-relative paths as an array and
-write a NUL-delimited literal pathspec:
+在 `project_path` 中运行：
 
 ```bash
-work_dir=$(mktemp -d)
-printf ':(literal)%s\0' "${candidate_files[@]}" > "$work_dir/candidate.pathspec"
+git rev-parse --show-toplevel
+git rev-parse --verify HEAD
+git branch --show-current
+git status --branch --untracked-files=all
 ```
 
-Create an English imperative Conventional Commit subject of at most 72
-characters:
+阻断 unborn `HEAD`、unmerged 条目或进行中的 merge、rebase、cherry-pick 与 revert。依据 `intent` 和
+`commit_files` 将每个变更路径归入候选分组、无关忽略或阻断错误。`repoName` 取 repository root
+目录名；detached HEAD 的 `branch` 返回 `HEAD-detached:<short-hash>`。所有候选路径使用 repo-relative
+literal path。
+
+**完成条件：** 仓库状态允许提交，且初始变更路径全部完成分类。
+
+## 2. 审查并分组
+
+审查每组 tracked 变更：
+
+```bash
+GIT_LITERAL_PATHSPECS=1 git diff HEAD -- "${candidate_files[@]}"
+GIT_LITERAL_PATHSPECS=1 git diff --check HEAD -- "${candidate_files[@]}"
+```
+
+直接读取每组 untracked 文本文件；二进制和生成产物按边界规则判定。检查原子性、完整性、敏感信息与
+依赖顺序；依赖分组在前，其余按稳定路径顺序。运行 `intent` 明确要求的额外验证。
+
+**完成条件：** 每个候选路径恰好属于一个完整分组，所有分组通过审查并排好顺序。
+
+## 3. 生成 message
+
+为每组创建不超过 72 个字符的英文祈使语气 Conventional Commit subject：
 
 ```text
 <type>(optional-scope): <imperative summary>
 ```
 
-Use `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`,
-`chore`, or `revert`. Read `<skill_path>/references/message-rules.md` only when
-the intent or diff requires a body, issue footer, or breaking-change notation.
+`type` 取 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、
+`revert`。仅当 `intent` 明确给出 Issue reference/关闭语义、变更属于 breaking change，或 message 需要
+补充用户影响、风险、迁移步骤或必要理由时，读取 [`message-rules.md`](./message-rules.md)。Issue 不得
+从 branch 或 diff 推断。
 
-When the group contains untracked files, create a separate literal pathspec and
-mark only those paths as intent-to-add:
+**完成条件：** 每个分组都有一条符合其目的与按需 message 规则的独立 message。
 
-```bash
-printf ':(literal)%s\0' "${untracked_files[@]}" > "$work_dir/untracked.pathspec"
-git add -N --pathspec-from-file="$work_dir/untracked.pathspec" --pathspec-file-nul
-```
+## 4. 逐组提交
 
-Immediately before committing, capture the current base commit and a canonical
-fingerprint of the complete candidate patch. Enable pipeline failure detection
-and reject a failed diff or hash command. The patch form includes full object
-IDs, binary data, and mode changes without exposing its contents to the model:
+对每个分组，依次执行本节提交和第 5 节校验；当前分组校验通过后才处理下一分组。当前组包含
+untracked 文件时，先仅为这些路径记录 intent-to-add：
 
 ```bash
-set -o pipefail
-base_commit=$(git rev-parse HEAD)
-candidate_patch_id=$(
-  GIT_LITERAL_PATHSPECS=1 git diff "$base_commit" --unified=0 --binary \
-    --full-index --no-ext-diff --no-textconv -- "${candidate_files[@]}" |
-    git hash-object --stdin
-)
+GIT_LITERAL_PATHSPECS=1 git add -N -- "${untracked_files[@]}"
+GIT_LITERAL_PATHSPECS=1 git commit --only -m "$subject" -- "${candidate_files[@]}"
 ```
 
-Commit only the candidate paths so unrelated staged changes remain untouched:
+body 和 footer 使用独立 `-m` 参数。`git add -N` 后、commit 创建前发生失败时，只清理本次新增的
+intent-to-add 路径：
 
 ```bash
-git commit --only -m "$subject" \
-  --pathspec-from-file="$work_dir/candidate.pathspec" --pathspec-file-nul
+GIT_LITERAL_PATHSPECS=1 git reset -q HEAD -- "${untracked_files[@]}"
 ```
 
-Add separate `-m` arguments only for a required body or footer. If any step after
-`git add -N` fails before the commit is created, reset only the temporary
-intent-to-add paths:
+**完成条件：** 当前分组创建一个 commit；失败时立即停止后续分组，保留已完成 commit。
+
+## 5. 提交后校验与返回
+
+当前组 commit 创建后立即运行：
 
 ```bash
-git reset -q HEAD \
-  --pathspec-from-file="$work_dir/untracked.pathspec" --pathspec-file-nul
+git diff-tree --no-commit-id --name-only -r --no-renames HEAD
+git show -s --format='%H%n%B' HEAD
+GIT_LITERAL_PATHSPECS=1 git status --short --untracked-files=all -- "${candidate_files[@]}"
 ```
 
-Report that the index may have changed if this cleanup fails. Remove the
-temporary directory after successful commit or successful cleanup.
+要求实际文件集合与候选分组完全相等、message 与预期相等，且候选范围无残留变更。只记录验证通过的
+commit。任一检查失败时保留已创建 commit，在 `error.message` 中写明完整 commit hash 和失败检查，
+在 `nextStep` 中给出最小处理动作，并将未验证路径写入 `error.files`。
 
-After each commit, verify the committed file set and message:
+严格按委派输入的 Result Contract 返回 JSON。`ignoredFiles` 仅来自初始清点的无关路径；部分成功时返回
+全部已验证 commit 和未提交的错误路径。JSON 之外不返回其他文本。
 
-```bash
-git diff-tree --no-commit-id --name-only -r -z --no-renames HEAD
-git show -s --format='%h%x00%B' HEAD
-```
-
-Hash the actual commit patch from the recorded base with the same canonical
-options:
-
-```bash
-actual_patch_id=$(
-  GIT_LITERAL_PATHSPECS=1 git diff "$base_commit" HEAD --unified=0 --binary \
-    --full-index --no-ext-diff --no-textconv -- "${candidate_files[@]}" |
-    git hash-object --stdin
-)
-test "$candidate_patch_id" = "$actual_patch_id"
-```
-
-After the fingerprints match, require a clean candidate scope relative to the
-new `HEAD`. This is a required scoped post-commit read, not a second full-repository
-status read:
-
-```bash
-GIT_LITERAL_PATHSPECS=1 git status --porcelain=v1 -z \
-  --untracked-files=all --ignored=matching --no-renames -- \
-  "${candidate_files[@]}"
-```
-
-Require empty output. Any tracked, staged, unstaged, untracked, or ignored
-residual means a hook changed the worktree after Git constructed the commit's
-temporary index. Treat the created commit as unverified: preserve it, put its ID
-in `error.message`, put the candidate paths in `error.files`, and return the
-partial-failure result without rollback or amend.
-
-Require the actual file set to equal the candidate group exactly. Require all
-natural-language subject, body, and footer text to be English. Require the patch
-fingerprints and every recorded deterministic artifact proof to match. This
-detects hooks that rewrite candidate content or file modes. Record the actual
-commit ID, full message, and files only after all checks pass.
-
-If a commit, hook, cleanup, or post-commit check fails, stop. Preserve every
-commit already created; do not amend or roll it back. Include every previously
-verified commit in the failure result, identify any unverified current paths as
-error files, identify any created but unverified commit ID in `error.message`,
-and state the smallest safe next step.
-
-## Result Semantics
-
-Follow the delegation prompt's Result Contract exactly; it is the sole source of
-truth for JSON keys and shapes.
-
-- Derive `data.ignoredFiles` only from paths classified as unrelated in the
-  initial inventory. Never derive it from tracked/untracked status labels or a
-  post-commit status read.
-- Let `committedPaths` be the union of every verified
-  `data.commits[*].files`. Before returning JSON, calculate
-  `data.ignoredFiles = initialUnrelatedPaths - committedPaths - error.files`.
-  This explicitly prevents a successfully committed untracked candidate from
-  remaining in `data.ignoredFiles`.
-- Require `committedPaths`, `data.ignoredFiles`, and `error.files` to be pairwise
-  disjoint. Require their union to cover every path from the initial changed-path
-  inventory plus any unexpected path discovered by a commit self-check. A path
-  must appear exactly once across these three sets.
-- Return ignored unrelated paths even on success, after applying the exclusions
-  above.
-- After repository resolution, include the resolved repository name, branch,
-  completed commits, and ignored files in every failure result.
-- Before repository resolution, use the contract's null data form.
-- On partial success, put every verified completed commit in `data.commits` and
-  put the failed or unverified paths in `error.files`.
-- Run the disjointness and coverage self-check immediately before serializing
-  the result. If only the result classification is inconsistent, correct the JSON
-  from the recorded initial classification map, verified commit records, and
-  self-check records. Do not run Git again. Never repair the result by adding a
-  committed path to `data.ignoredFiles`.
-- Return no Markdown, commentary, or text outside the JSON value.
+**完成条件：** 返回值符合 Result Contract，且每个初始变更路径只出现在 committed、ignored 或 error
+其中一类。

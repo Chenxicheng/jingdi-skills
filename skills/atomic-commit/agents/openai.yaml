@@ -1,4 +1,4 @@
 interface:
-  display_name: "Atomic Commit"
-  short_description: "Delegate isolated atomic Git commits"
-  default_prompt: "Use $atomic-commit to create scoped atomic commits for the current work."
+  display_name: "原子化提交"
+  short_description: "创建范围明确、可审查的原子化 Git 提交"
+  default_prompt: "使用 $atomic-commit 将当前变更创建为范围明确、可审查的原子化提交。"

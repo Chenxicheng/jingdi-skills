@@ -1,78 +1,59 @@
 ---
 name: atomic-commit
 description: >-
-  Create atomic Git commits by delegating repository inspection and mutation to
-  a Codex subagent. Use when the user asks to commit current or scoped changes,
-  split mixed work into commits, or follow an approved atomic-commit workflow.
-  Do not use for amend, initial commit, push, staging-only work, or planning
-  commits without creating them.
+  提交已有 Git 仓库的当前或指定范围变更：创建新的本地原子化 commit，或将可按完整文件分组的
+  混合变更拆分为多个 commit。不用于 amend、initial commit、push 或仅 staging。
 ---
 
-# Atomic Commit
+# 原子化提交
 
-Coordinate one bounded Commit Batch. The Committer Subagent exclusively runs
-Git and verifies its own commits; the Coordinator validates only its JSON.
+## Coordinator 流程
 
-## Coordinator workflow
+1. 从用户请求或 workspace metadata 解析绝对路径 `project_path`；两者均无法确定时才询问。
+   解析当前 Skill 目录为 `skill_path`，不读取 Commit Guide。
+2. 将完整提交请求作为 `intent`，包含请求上下文中明确的 Issue reference 与关闭语义；
+   不从 branch 或 diff 推断 Issue。用户明确指定路径时，将其作为最大范围 `commit_files`。
+3. 创建不继承对话历史的新 Subagent，不指定 model。仅发送委派输入并等待。
+4. 按 Result Contract 校验 JSON。不合格时，只允许同一 Subagent 在不运行 Git 的前提下修正一次；
+   仍不合格则报告阻塞，否则转述结果。
 
-1. Resolve `project_path` from the user request or current workspace metadata.
-   Ask only when neither identifies one absolute path.
-2. Resolve this Skill directory as `skill_path` without opening
-   `references/commit-guide.md`.
-3. Preserve the user's complete request as `intent`. When the user explicitly
-   names files or directories, pass them as the maximum `commit_files` scope;
-   otherwise omit `commit_files`.
-4. Create one fresh Codex subagent without conversation history. Send only the
-   delegation envelope below, then wait for it to finish. Do not pin a model.
-5. Validate the returned JSON against the Result Contract. If it is malformed,
-   ask the same subagent once to correct only the JSON response without rerunning
-   Git. Report a blocked result if the correction still fails.
-6. Report the validated result to the user.
+Subagent 独占仓库检查、分组、commit message、Git 写入与校验。Coordinator 仅执行上述
+流程；Subagent 不可用时停止。
 
-The Coordinator does not read the Commit Guide, run Git, inspect repository
-state, choose candidate files, write messages, or perform a fallback commit. If
-Codex subagents are unavailable, stop and explain that delegation is required.
-
-## Delegation envelope
+## 委派输入
 
 ```text
-Act as the sole Committer Subagent for this request.
+作为本次请求唯一的 Subagent。
 
-Before running any Git command, read and follow:
+运行任何 Git 命令前，先读取并遵循：
 <skill_path>/references/commit-guide.md
 
-Inputs:
-- project_path: <absolute project path>
-- intent: <verbatim user request>
-- commit_files: <optional explicit maximum scope; omit when absent>
+输入：
+- project_path: <项目绝对路径>
+- intent: <用户完整请求>
+- commit_files: <可选的最大允许范围；缺失时省略>
 
-Own all repository inspection, candidate grouping, commit creation, and
-post-commit verification. Return exactly one JSON object with no Markdown or
-surrounding text.
+独立完成仓库检查、分组、commit 创建和提交后校验。只返回一个 JSON 对象，不添加 Markdown 或前后文本。
 
-Result Contract
+结果契约
 
-Success:
+成功：
 {"ok":true,"data":{"commits":[{"commitId":"<id>","commitMessage":"<message>","files":["<repo-relative path>"]}],"ignoredFiles":["<repo-relative path>"]}}
 
-Failure after resolving the repository:
+仓库解析后的失败：
 {"ok":false,"data":{"repoName":"<name>","branch":"<branch>","commits":[],"ignoredFiles":[]},"error":{"message":"<reason>","files":["<repo-relative path>"],"nextStep":"<smallest required action>"}}
 
-Failure before resolving the repository:
+仓库解析前的失败：
 {"ok":false,"data":null,"error":{"message":"<reason>","files":[],"nextStep":"<smallest required action>"}}
 
-For partial success, populate the failure result's data.commits with every
-created and verified commit.
+部分成功时，将已创建且验证通过的 commit 写入失败结果的 data.commits。
 ```
 
-## Result validation
+## 结果校验
 
-- Accept only the three Result Contract shapes with no additional top-level
-  fields.
-- Require non-empty strings and repo-relative `files`; allow an empty
-  `ignoredFiles` or failure `error.files` array.
-- Require at least one commit on success. A no-change result is a failure.
-- Require `commits[].files`, `ignoredFiles`, and `error.files` to be duplicate-free
-  and mutually exclusive wherever those fields are present.
-- Preserve the Subagent's `error.message` and `nextStep`; do not reinterpret
-  repository facts.
+- 只接受上述三种结构，不得增加顶层字段。
+- 字符串必须非空，`files` 必须使用 repo-relative 路径；`ignoredFiles` 和失败结果的
+  `error.files` 可以为空。
+- 成功结果至少包含一个 commit；没有变更时返回失败。
+- `commits[].files`、`ignoredFiles`、`error.files` 各自无重复且彼此互斥。
+- 原样转述 `error.message` 和 `nextStep`，不得重新解释仓库事实。

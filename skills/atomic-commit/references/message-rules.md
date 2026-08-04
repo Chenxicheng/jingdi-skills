@@ -1,31 +1,30 @@
-# Advanced Commit Message Rules
+# 按需 Commit Message 规则
 
-Read this file only when `intent` or the candidate diff requires a body, issue
-footer, or breaking-change notation. Keep ordinary Conventional Commits to one
-line.
+普通 Conventional Commit 保持单行。
 
-## Breaking Changes
+## Issue association
 
-When the change is explicitly breaking:
+Issue 仅来自 `intent` 中明确的编号或 URL；不从 branch、diff、注释或文件名推断。
 
-- Add `!` as `type!:` or `type(scope)!:`.
-- Add `BREAKING CHANGE: <description>` as a footer.
-- Describe the user-visible impact or migration requirement in English.
+- 用户明确表达“关联”、“涉及”或未声明完成 Issue：`Refs #123`。
+- 用户明确表达“关闭”、“修复”或“解决” Issue：`Closes #123`。
+- 同仓库使用 `#123`；跨仓库 Issue 或完整 URL 规范化为 `owner/repo#123`。
+- 多个 Issue 为每个 Issue 重复完整 footer，可以在同一 message 中混合 `Refs` 与 `Closes`。
+- 同一 Issue 贯穿多个 commit 时，前置 commit 使用 `Refs`，仅完成该 Issue 的最后一个 commit 使用
+  `Closes`。
 
-Block when compatibility may break but the impact is unclear. Request the
-missing impact through the Result Contract; do not invent it.
+Issue 编号或 URL 不明确时省略 Issue footer。footer 的自然语言使用英文。
 
-## Issue References
+## Breaking change
 
-Use only issue references present in `intent` or the candidate diff:
+变更明确破坏兼容性时：
 
-- Use `Closes #123` when the commit fixes and closes the issue.
-- Use `Refs #456` when the commit relates to the issue without closing it.
+- 在 `type!:` 或 `type(scope)!:` 中加入 `!`。
+- 添加 footer：`BREAKING CHANGE: <description>`。
+- 用英文描述用户可见影响或迁移要求。
 
-Never infer an issue number from unrelated text.
+可能破坏兼容性但影响不明时阻断提交，通过 Result Contract 请求缺失信息。
 
-## Body and Footers
+## Body
 
-Write the body in English only when it adds user impact, risk, migration steps,
-or necessary rationale. Use footers only for breaking changes or explicit issue
-references. Omit both when no such information exists.
+body 仅在补充用户影响、风险、迁移步骤或必要理由时编写，自然语言使用英文。无对应信息时省略 body。
