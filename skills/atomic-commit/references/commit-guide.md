@@ -10,34 +10,30 @@
 - 敏感文件、密钥、token、密码、私钥、`.env` 或机器本地配置始终阻断。
 - 二进制或生成产物仅在用户明确纳入，或与同组 source/producer 的关系清晰时提交。
 - 不 push、amend、rollback、绕过 Hook、修改 Git 配置或丢弃 worktree 变更。
-- 默认只做提交级验证；test、lint 或 build 仅在 `intent` 明确要求时运行。
+- test、lint 或 build 仅在 `intent` 明确要求时运行。
+- 路径与 message 均作为独立参数传给 Git；按当前执行环境安全引用动态值。
 
 ## 1. 解析并清点
 
-在 `project_path` 中运行：
+在 `project_path` 中运行 `git rev-parse --show-toplevel`，以返回的仓库根目录为后续命令的工作目录：
 
-```bash
-git rev-parse --show-toplevel
+```text
 git rev-parse --verify HEAD
 git branch --show-current
 git status --branch --untracked-files=all
 ```
 
 阻断 unborn `HEAD`、unmerged 条目或进行中的 merge、rebase、cherry-pick 与 revert。依据 `intent` 和
-`commit_files` 将每个变更路径归入候选分组、无关忽略或阻断错误。`repoName` 取 repository root
-目录名；detached HEAD 的 `branch` 返回 `HEAD-detached:<short-hash>`。所有候选路径使用 repo-relative
-literal path。
+`commit_files` 将每个变更路径归入候选分组、无关忽略或阻断错误。将用户指定路径归一为仓库相对路径；
+路径基准不明时阻断并报告。还原 `git status` 的文件名转义和显示引号。`repoName` 取 repository
+root 目录名；detached HEAD 的 `branch` 返回 `HEAD-detached:<short-hash>`。
+没有候选变更时按失败返回。
 
 **完成条件：** 仓库状态允许提交，且初始变更路径全部完成分类。
 
 ## 2. 审查并分组
 
-审查每组 tracked 变更：
-
-```bash
-GIT_LITERAL_PATHSPECS=1 git diff HEAD -- "${candidate_files[@]}"
-GIT_LITERAL_PATHSPECS=1 git diff --check HEAD -- "${candidate_files[@]}"
-```
+审查每组 tracked 变更：运行 `git --literal-pathspecs diff HEAD --`，在 `--` 后逐个传入本组路径。
 
 直接读取每组 untracked 文本文件；二进制和生成产物按边界规则判定。检查原子性、完整性、敏感信息与
 依赖顺序；依赖分组在前，其余按稳定路径顺序。运行 `intent` 明确要求的额外验证。
@@ -46,6 +42,9 @@ GIT_LITERAL_PATHSPECS=1 git diff --check HEAD -- "${candidate_files[@]}"
 
 ## 3. 生成 message
 
+逐组对照 `intent` 与已审查的变更。上下文能解释本组全部变更的目的时，将其总结为 message；
+否则根据本组实际变更生成 message。
+
 为每组创建不超过 72 个字符的英文祈使语气 Conventional Commit subject：
 
 ```text
@@ -53,47 +52,28 @@ GIT_LITERAL_PATHSPECS=1 git diff --check HEAD -- "${candidate_files[@]}"
 ```
 
 `type` 取 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、
-`revert`。Issue footer 仅来自 `intent` 中明确的 Issue。`intent` 包含此类 Issue、变更明确或可能破坏
-兼容性，或 message 需要补充用户影响、风险、迁移步骤或必要理由时，读取
+`revert`。出现 Issue 线索、变更明确或可能破坏兼容性，或 message
+需要补充用户影响、风险、迁移步骤或必要理由时，读取
 [`message-rules.md`](./message-rules.md)。
 
-**完成条件：** 每个分组都有一条符合其目的与按需 message 规则的独立 message。
+**完成条件：** 每组都有独立 message，其内容可由本组变更和已确认的上下文支持。
 
 ## 4. 逐组提交
 
-对每个分组，依次执行本节提交和第 5 节校验；当前分组校验通过后才处理下一分组。当前组包含
-untracked 文件时，先仅为这些路径记录 intent-to-add：
-
-```bash
-GIT_LITERAL_PATHSPECS=1 git add -N -- "${untracked_files[@]}"
-GIT_LITERAL_PATHSPECS=1 git commit --only -m "$subject" -- "${candidate_files[@]}"
-```
-
-body 和 footer 使用独立 `-m` 参数。`git add -N` 后、commit 创建前发生失败时，只清理本次新增的
-intent-to-add 路径：
-
-```bash
-GIT_LITERAL_PATHSPECS=1 git reset -q HEAD -- "${untracked_files[@]}"
-```
+对每个分组，依次提交并记录第 5 节的 commit hash，再处理下一组。当前组包含
+untracked 文件时，先用 `git --literal-pathspecs add -N --` 仅为这些路径记录 intent-to-add。
+然后用 `git --literal-pathspecs commit --only` 创建提交：subject、每段 body 和每条 footer
+分别使用一个 `-m` 参数，最后用 `--` 逐个传入本组路径。`git add -N` 后、commit 创建前发生失败时，
+仅对本次新增的 intent-to-add 路径运行 `git --literal-pathspecs reset -q HEAD --` 清理标记。
 
 **完成条件：** 当前分组创建一个 commit；失败时立即停止后续分组，保留已完成 commit。
 
-## 5. 提交后校验与返回
+## 5. 返回结果
 
-当前组 commit 创建后立即运行：
+每组提交成功后运行 `git rev-parse HEAD` 和 `git cat-file commit HEAD`，记录 commit hash 与
+commit 对象首个空行后的实际 message。部分成功时报告已创建的 commit、失败路径和下一步。
+`ignoredFiles` 仅包含初始清点中与请求无关的路径。
 
-```bash
-git diff-tree --no-commit-id --name-only -r --no-renames HEAD
-git show -s --format='%H%n%B' HEAD
-GIT_LITERAL_PATHSPECS=1 git status --short --untracked-files=all -- "${candidate_files[@]}"
-```
+严格按委派输入的 Result Contract 返回 JSON。JSON 之外不返回其他文本。
 
-要求实际文件集合与候选分组完全相等、message 与预期相等，且候选范围无残留变更。只记录验证通过的
-commit。任一检查失败时保留已创建 commit，在 `error.message` 中写明完整 commit hash 和失败检查，
-在 `nextStep` 中给出最小处理动作，并将未验证路径写入 `error.files`。
-
-严格按委派输入的 Result Contract 返回 JSON。`ignoredFiles` 仅来自初始清点的无关路径；部分成功时返回
-全部已验证 commit 和未验证的错误路径。JSON 之外不返回其他文本。
-
-**完成条件：** 返回值符合 Result Contract，且每个初始变更路径只出现在 committed、ignored 或 error
-其中一类。
+**完成条件：** 已记录所有成功的 commit，并报告剩余路径的处理结果。

@@ -2,14 +2,15 @@
 
 ## Issue association
 
-- 用户明确表达“关联”、“涉及”或未声明完成 Issue：`Refs #123`。
-- 用户明确表达“关闭”、“修复”或“解决” Issue：`Closes #123`。
+- 从 `intent`、当前分支名等现有线索确认 Issue 编号及其与本组变更的关联；无法确认时省略 footer。
+- 关联已确认但未明确完成 Issue：`Refs #123`。
+- 只有明确要求关闭或修复完成，且本组变更确实完成该 Issue：`Closes #123`。
 - 同仓库使用 `#123`；跨仓库 Issue 或完整 URL 规范化为 `owner/repo#123`。
 - 多个 Issue 为每个 Issue 重复完整 footer，可以在同一 message 中混合 `Refs` 与 `Closes`。
 - 同一 Issue 贯穿多个 commit 时，前置 commit 使用 `Refs`，仅完成该 Issue 的最后一个 commit 使用
   `Closes`。
 
-Issue 编号或 URL 不明确时省略 Issue footer。footer 的自然语言使用英文。
+分支名中的数字不能单独证明 Issue 关联。不创建 Issue，不补造编号。footer 的自然语言使用英文。
 
 ## Breaking change
 
