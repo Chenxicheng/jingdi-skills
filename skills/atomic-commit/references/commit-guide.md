@@ -1,11 +1,12 @@
 # Subagent 执行指南
 
-输入：`project_path`、`intent`、可选 `commit_files` 和 Result Contract。
+输入：`project_path`、`mode`、`intent`、`commit_files`（`inspect` 时可省略）和 Result Contract。
 
 ## 边界
 
 - 每个 commit 只表达一个可审查目的，并包含该目的需要的实现、测试、文档、配置、迁移与生成产物。
-- `commit_files` 是最大允许范围；完整 commit 需要范围外路径时阻断。
+- `direct` 的 `commit_files` 是完整提交范围；`inspect` 的 `commit_files` 是最大允许范围。
+  完整分组需要范围外路径时阻断。
 - 需要 hunk 级拆分、单文件混合多个目的、依赖或顺序不明时阻断，不运行交互式 Git 命令。
 - 敏感文件、密钥、token、密码、私钥、`.env` 或机器本地配置始终阻断。
 - 二进制或生成产物仅在用户明确纳入，或与同组 source/producer 的关系清晰时提交。
@@ -24,26 +25,29 @@ git status --branch --untracked-files=all
 ```
 
 阻断 unborn `HEAD`、unmerged 条目或进行中的 merge、rebase、cherry-pick 与 revert。依据 `intent` 和
-`commit_files` 将每个变更路径归入候选分组、无关忽略或阻断错误。将用户指定路径归一为仓库相对路径；
+`commit_files` 将每个变更路径归入候选分组、无关忽略或阻断错误。将 `commit_files` 归一为仓库相对路径；
 路径基准不明时阻断并报告。还原 `git status` 的文件名转义和显示引号。`repoName` 取 repository
 root 目录名；detached HEAD 的 `branch` 返回 `HEAD-detached:<short-hash>`。
 没有候选变更时按失败返回。
 
 **完成条件：** 仓库状态允许提交，且初始变更路径全部完成分类。
 
-## 2. 审查并分组
+## 2. 按模式分组
 
-审查每组 tracked 变更：运行 `git --literal-pathspecs diff HEAD --`，在 `--` 后逐个传入本组路径。
+`direct`：将 `commit_files` 作为一个分组，依据 `intent` 确定目的。核对这些路径均有待提交变更，
+直接进入 message 生成；无需逐文件读取 diff 或文件内容。
 
-直接读取每组 untracked 文本文件；二进制和生成产物按边界规则判定。检查原子性、完整性、敏感信息与
-依赖顺序；依赖分组在前，其余按稳定路径顺序。运行 `intent` 明确要求的额外验证。
+`inspect`：运行 `git --literal-pathspecs diff HEAD --` 审查每组 tracked 变更；直接读取每组
+untracked 文本文件。检查原子性、完整性、敏感信息与依赖顺序；依赖分组在前，其余按稳定路径顺序。
+二进制和生成产物按边界规则判定。
 
-**完成条件：** 每个候选路径恰好属于一个完整分组，所有分组通过审查并排好顺序。
+两种模式都运行 `intent` 明确要求的额外验证。
+
+**完成条件：** `direct` 的指定路径均有变更，或 `inspect` 的每个候选路径都归入完整分组；要求的验证已通过。
 
 ## 3. 生成 message
 
-逐组对照 `intent` 与已审查的变更。上下文能解释本组全部变更的目的时，将其总结为 message；
-否则根据本组实际变更生成 message。
+`direct` 根据 `intent` 生成 message；`inspect` 根据已审查的变更生成 message，结合已知上下文说明目的。
 
 为每组创建不超过 72 个字符的英文祈使语气 Conventional Commit subject：
 
