@@ -42,5 +42,5 @@ Result Contract
 
 失败：
 {"ok":false,"data":null,"error":{"message":"<reason>","files":[],"nextStep":"<smallest required action>"}}
-仓库已解析时 data 写入 repoName、branch、commits、ignoredFiles；部分成功时 commits 写入已创建项。
+失败时若仓库已解析，data 写入 repoName、branch、commits、ignoredFiles；部分成功时 commits 写入已创建项。
 ```
