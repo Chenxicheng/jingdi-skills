@@ -16,8 +16,7 @@ description: 创建本地原子化 Git commit：提交当前或指定范围的�
 3. 创建不继承对话历史的新 Subagent，不指定 model。仅发送 Delegation Envelope 并等待。
 4. 核对返回的 JSON 结构并转述结果；格式错误时报告异常，不再运行 Git。
 
-Subagent 独占仓库检查、分组、commit message、Git 写入与结果记录。Coordinator 仅执行上述
-流程；Subagent 不可用时停止。
+Subagent 独占仓库检查、分组、commit message、Git 写入与结果记录；不可用时停止。
 
 ## Delegation Envelope
 
@@ -41,11 +40,7 @@ Result Contract
 成功：
 {"ok":true,"data":{"commits":[{"commitId":"<id>","commitMessage":"<message>","files":["<repo-relative path>"]}],"ignoredFiles":["<repo-relative path>"]}}
 
-仓库解析后的失败：
-{"ok":false,"data":{"repoName":"<name>","branch":"<branch>","commits":[],"ignoredFiles":[]},"error":{"message":"<reason>","files":["<repo-relative path>"],"nextStep":"<smallest required action>"}}
-
-仓库解析前的失败：
+失败：
 {"ok":false,"data":null,"error":{"message":"<reason>","files":[],"nextStep":"<smallest required action>"}}
-
-部分成功时，将已创建的 commit 写入失败结果的 data.commits。
+仓库已解析时 data 写入 repoName、branch、commits、ignoredFiles；部分成功时 commits 写入已创建项。
 ```
